@@ -1,0 +1,305 @@
+{
+  "contentType": "application/vnd.gorules.decision",
+  "nodes": [
+    {
+      "id": "input-node-001",
+      "name": "solicitud",
+      "type": "inputNode",
+      "content": {
+        "schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"title\": \"Evaluación Ayuda Excedencia Navarra\",\n  \"description\": \"Schema para evaluar los diferentes supuestos de ayuda para la excedencia en Navarra\",\n  \"properties\": {\n    \"input\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"parentesco\": {\n          \"type\": \"string\",\n          \"enum\": [\"padre\", \"madre\", \"hijo\", \"hija\", \"conyuge\", \"pareja\", \"esposo\", \"esposa\", \"mujer\",\"marido\"],\n          \"description\": \"Relación familiar con la persona que necesita cuidado\"\n        },\n        \"situacion\": {\n          \"type\": \"string\",\n          \"enum\": [\"parto\", \"adopcion\", \"acogimiento\", \"parto_multiple\", \"adopcion_multiple\", \"acogimiento_multiple\", \"enfermedad\", \"accidente\"],\n          \"description\": \"Situación que motiva la necesidad de cuidado\"\n        },\n        \"familia_monoparental\": {\n          \"type\": \"boolean\",\n          \"description\": \"¿Es una familia monoparental o en situación de monoparentalidad?\"\n        }\n      },\n      \"required\": [\"parentesco\", \"situacion\", \"familia_monoparental\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\"input\"],\n  \"additionalProperties\": false\n}"
+      },
+      "position": {
+        "x": -40,
+        "y": 295
+      }
+    },
+    {
+      "id": "decision-table-001",
+      "name": "eval_potencial_ayuda_excedencia",
+      "type": "decisionTableNode",
+      "content": {
+        "rules": [
+          {
+            "_id": "regla-005",
+            "_description": "Supuesto E: Familia monoparental cualquier hijo",
+            "output-supuesto": "\"E\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"Familia monoparental con recién nacido\"",
+            "output-tiene-derecho": "true",
+            "output-importe-mensual": "500",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "\"La situación de monoparentalidad ha de estar acreditada\"",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "true",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": "\"parto\",\"nacimiento\""
+          },
+          {
+            "_id": "regla-002",
+            "_description": "Supuesto B: Tercer hijo o más con recién nacido",
+            "output-supuesto": "\"B\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"Tercer hijo o más con recién nacido\"",
+            "output-tiene-derecho": "true",
+            "output-importe-mensual": "500",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "\"El número de hjos debe ser 3 o más, las edades de al menos 2 de los menores debe ser menos de 6, si hay discapacidad mayor del 33% entonces el límite es 9 años $input\"",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": "\"parto\",\"nacimiento\""
+          },
+          {
+            "_id": "regla-001",
+            "_description": "Supuesto A: Cuidado familiar primer grado enfermo/accidentado",
+            "output-supuesto": "\"A\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"Cuidado familiar primer grado enfermo o que ha sufrido un accidente\"",
+            "output-tiene-derecho": "true",
+            "output-importe-mensual": "725",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "\"La persona ha de haber sido hospitalizada y el cuidado de la persona ha se ser continuado\"",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": "\"enfermedad\",\"accidente\""
+          },
+          {
+            "_id": "regla-003",
+            "_description": "Supuesto C: Adopción o acogimiento",
+            "output-supuesto": "\"C\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"Adopción o acogimiento\"",
+            "output-tiene-derecho": "true",
+            "output-importe-mensual": "500",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "\"En el caso acogimiento la duración ha de ser mayor de un año\"",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": "\"adopcion\",\"acogimiento\""
+          },
+          {
+            "_id": "regla-004",
+            "_description": "Supuesto D: Parto, adopción o acogimiento múltiple",
+            "output-supuesto": "\"D\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"Parto, adopción o acogimiento múltiple\"",
+            "output-tiene-derecho": "true",
+            "output-importe-mensual": "500",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": "\"parto_multiple\",\"adopcion_multiple\",\"nacimiento_multiple\""
+          },
+          {
+            "_id": "515afd1f-43cc-44ed-971c-fefb273840b2",
+            "_description": "No se ha encontrado ningún supuesto que aplique",
+            "output-supuesto": "\"NINGUNO\"",
+            "input-parentesco": "true",
+            "output-descripcion": "\"No se ha encontrado ningún supuesto que aplique\"",
+            "output-tiene-derecho": "false",
+            "output-importe-mensual": "0",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": ""
+          },
+          {
+            "_id": "058dd988-90dd-46da-8478-ee458aacde6f",
+            "_description": "Sólo se admiten: padre, madre, hijo, hija, conyuge o pareja",
+            "output-supuesto": "\"NINGUNO\"",
+            "input-parentesco": "false",
+            "output-descripcion": "\"No cumple por parentesco (primer grado)\"",
+            "output-tiene-derecho": "false",
+            "output-importe-mensual": "0",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": ""
+          },
+          {
+            "_id": "f32bfb0f-801d-4d6c-b5bd-13a1edd0eaca",
+            "_description": "",
+            "output-supuesto": "\"NINGUNO\"",
+            "input-parentesco": "",
+            "output-descripcion": "\"UNKNOWN_ERROR\"",
+            "output-tiene-derecho": "false",
+            "output-importe-mensual": "0",
+            "06347639-63c0-41bc-b2a0-09cea0cb669c": "",
+            "4552d3df-4d61-49e3-b6a7-26da04910cda": "",
+            "89ca6fb3-c65b-4943-aa7e-c6c88a787731": ""
+          }
+        ],
+        "inputs": [
+          {
+            "id": "input-parentesco",
+            "name": "Parentesco Familiar",
+            "field": "parentesco_valido"
+          },
+          {
+            "id": "89ca6fb3-c65b-4943-aa7e-c6c88a787731",
+            "name": "New field",
+            "field": "input.situacion"
+          },
+          {
+            "id": "4552d3df-4d61-49e3-b6a7-26da04910cda",
+            "name": "New field",
+            "field": "input.familia_monoparental"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "output-tiene-derecho",
+            "name": "Tiene Derecho",
+            "field": "output.tiene_derecho_potencial"
+          },
+          {
+            "id": "output-importe-mensual",
+            "name": "Importe Mensual (€)",
+            "field": "output.importe_mensual"
+          },
+          {
+            "id": "output-supuesto",
+            "name": "Supuesto Aplicable",
+            "field": "output.supuesto"
+          },
+          {
+            "id": "output-descripcion",
+            "name": "Descripción",
+            "field": "output.descripcion"
+          },
+          {
+            "id": "06347639-63c0-41bc-b2a0-09cea0cb669c",
+            "name": "Output",
+            "field": "output.requisitos_adicionales"
+          }
+        ],
+        "hitPolicy": "first",
+        "inputField": null,
+        "outputPath": null,
+        "passThrough": true,
+        "executionMode": "single"
+      },
+      "position": {
+        "x": 525,
+        "y": 295
+      }
+    },
+    {
+      "id": "output-node-001",
+      "name": "resolucion",
+      "type": "outputNode",
+      "content": {
+        "schema": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"type\": \"object\",\n  \"title\": \"Output Evaluación Ayuda Excedencia Navarra\",\n  \"description\": \"Resultado de la evaluación de los supuestos de ayuda\",\n  \"properties\": {\n    \"output\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"descripcion\": {\n          \"type\": \"string\",\n          \"description\": \"Descripción del supuesto aplicable\"\n        },\n        \"importe_mensual\": {\n          \"type\": \"integer\",\n          \"description\": \"Importe mensual de la bonificación en euros\"\n        },\n        \"requisitos_adicionales\": {\n          \"type\": \"string\",\n          \"description\": \"Descripción detallada de los requisitos adicionales que deben cumplirse\"\n        },\n        \"supuesto\": {\n          \"type\": \"string\",\n          \"description\": \"Letra del supuesto aplicable según la normativa\"\n        },\n        \"tiene_derecho_potencial\": {\n          \"type\": \"boolean\",\n          \"description\": \"¿Cumple los requisitos intrínsecos para tener derecho potencial a la bonificación?\"\n        },\n        \"errores\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"description\": \"Lista de errores o requisitos no cumplidos\"\n        },\n        \"advertencias\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"description\": \"Lista de advertencias o información adicional relevante\"\n        }\n      },\n      \"required\": [\"descripcion\", \"importe_mensual\", \"supuesto\", \"tiene_derecho_potencial\"],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\"output\"],\n  \"additionalProperties\": true\n}"
+      },
+      "position": {
+        "x": 810,
+        "y": 295
+      }
+    },
+    {
+      "id": "c4fbb492-b7d2-4123-b36b-2f6804d53700",
+      "name": "eval_parentesco",
+      "type": "decisionTableNode",
+      "content": {
+        "rules": [
+          {
+            "_id": "e8c2d9f9-1cef-479f-b985-f8cf7de9f083",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"madre\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "488479c2-dbeb-4956-847b-82740ad06ffe",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"padre\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "c2c2bfdb-fa23-4551-ae1e-0f1f0678cbec",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"hijo\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "31b098b3-3d70-401b-8894-12054ddcb176",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"hija\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "eda872ab-72d8-4b8f-9b0d-06f6eba7bf78",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"conyuge\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "f0d3c80c-54f0-4011-bae5-9a9e64ec7633",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"pareja\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "fe203f45-8617-4728-b36b-d3701a589100",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"mujer\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "6b9db3aa-f5fd-460a-8962-83a49d12ecd7",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"marido\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "77674fc5-cea2-46b6-a9d1-8ccfabfce155",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"esposo\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "d177b0f1-36b6-4cbc-8437-d45ef91f7412",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "\"esposa\"",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "true"
+          },
+          {
+            "_id": "5e1a19e6-2d92-46b5-b2ae-cc228ef13b8a",
+            "_description": "",
+            "7284f076-dcb8-4247-8ee5-f4c0838d2ba5": "",
+            "d62ef8e3-4f8e-423b-b9f5-fbd849686799": "false"
+          }
+        ],
+        "inputs": [
+          {
+            "id": "7284f076-dcb8-4247-8ee5-f4c0838d2ba5",
+            "name": "Input",
+            "field": "input.parentesco"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "d62ef8e3-4f8e-423b-b9f5-fbd849686799",
+            "name": "Output",
+            "field": "parentesco_valido"
+          }
+        ],
+        "hitPolicy": "first",
+        "inputField": null,
+        "outputPath": null,
+        "passThrough": true,
+        "executionMode": "single"
+      },
+      "position": {
+        "x": 250,
+        "y": 295
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-002",
+      "type": "edge",
+      "sourceId": "decision-table-001",
+      "targetId": "output-node-001"
+    },
+    {
+      "id": "b705448a-d132-4156-a609-063663b31c98",
+      "type": "edge",
+      "sourceId": "input-node-001",
+      "targetId": "c4fbb492-b7d2-4123-b36b-2f6804d53700"
+    },
+    {
+      "id": "cde7b12d-1ea1-4046-816f-c320aca22f8d",
+      "type": "edge",
+      "sourceId": "c4fbb492-b7d2-4123-b36b-2f6804d53700",
+      "targetId": "decision-table-001"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "dxt_version": "0.1",
+  "name": "bon-calculadora-mcp-server",
+  "display_name": "BON Calculadora MCP Server",
+  "version": "1.0.0",
+  "description": "BON Calculadora MCP Server",
+  "author": {
+    "name": "Carlos Vicens"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "stdio_server",
+    "mcp_config": {
+      "command": "${__dirname}/stdio_server",
+      "args": [],
+      "env": {}
+    }
+  },
+  "tools_generated": true,
+  "license": "MIT"
+}

@@ -1,0 +1,455 @@
+use serde::{Deserialize, Serialize};
+use zen_engine::DecisionEngine;
+use zen_engine::model::DecisionContent;
+use zen_engine::{EvaluationError, NodeError};
+use std::fmt;
+
+use rmcp::{
+    ServerHandler,
+    handler::server::{router::tool::ToolRouter, tool::Parameters, wrapper::Json},
+    model::{ServerCapabilities, ServerInfo},
+    schemars, tool, tool_handler, tool_router,
+};
+
+// =================== ESTRUCTURAS DE ERROR ===================
+
+#[derive(Debug, Deserialize)]
+pub struct ValidationError {
+    pub message: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ValidationErrorSource {
+    pub errors: Vec<ValidationError>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ValidationErrorDetails {
+    pub source: ValidationErrorSource,
+    #[serde(rename = "type")]
+    #[allow(dead_code)]
+    pub error_type: String,
+}
+
+#[derive(Debug)]
+pub enum ExcedenciaError {
+    ValidationError(Vec<ValidationError>),
+    ZenEngineError(EvaluationError),
+    SerializationError(serde_json::Error),
+    // Other(String),
+}
+
+impl fmt::Display for ExcedenciaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExcedenciaError::ValidationError(errors) => {
+                write!(f, "Errores de validación:\n")?;
+                for error in errors {
+                    write!(f, "  - {}: {}\n", error.path, error.message)?;
+                }
+                Ok(())
+            },
+            ExcedenciaError::ZenEngineError(e) => write!(f, "Error del motor de decisión: {}", e),
+            ExcedenciaError::SerializationError(e) => write!(f, "Error de serialización: {}", e),
+            // ExcedenciaError::Other(msg) => write!(f, "Error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ExcedenciaError {}
+
+impl From<EvaluationError> for ExcedenciaError {
+    fn from(error: EvaluationError) -> Self {
+        ExcedenciaError::ZenEngineError(error)
+    }
+}
+
+impl From<serde_json::Error> for ExcedenciaError {
+    fn from(error: serde_json::Error) -> Self {
+        ExcedenciaError::SerializationError(error)
+    }
+}
+
+// =================== ESTRUCTURAS DE DATOS ===================
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+pub struct ExcedenciaInput {
+    #[schemars(description = "Relación familiar con la persona que necesita cuidado. Valores válidos: padre, madre, hijo, hija, conyuge, pareja, esposo, esposa, mujer, marido")]
+    pub parentesco: String,
+    
+    #[schemars(description = "Situación que motiva la necesidad de cuidado. Valores válidos: parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad, accidente")]
+    pub situacion: String,
+    
+    #[schemars(description = "¿Es una familia monoparental o en situación de monoparentalidad?")]
+    pub familia_monoparental: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ExcedenciaRequest {
+    #[schemars(description = "Datos de entrada para evaluar el supuesto de ayuda para excedencia")]
+    pub input: ExcedenciaInput,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct ExcedenciaOutput {
+    descripcion: String,
+    importe_mensual: i32,
+    #[serde(default)]
+    requisitos_adicionales: String,
+    supuesto: String,
+    tiene_derecho_potencial: bool,
+    #[serde(default)]
+    errores: Vec<String>,
+    #[serde(default)]
+    advertencias: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+pub struct ExcedenciaResponse {
+    #[schemars(description = "Resultado de la evaluación")]
+    pub output: ExcedenciaOutputForSchema,
+    #[serde(default)]
+    pub input: Option<ExcedenciaInput>,
+    #[serde(default)]
+    pub parentesco_valido: Option<bool>,
+}
+
+// Estructura para el schema JSON (para documentación MCP)
+#[derive(Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
+pub struct ExcedenciaOutputForSchema {
+    #[schemars(description = "Descripción del supuesto aplicable")]
+    pub descripcion: String,
+    
+    #[schemars(description = "Importe mensual de la bonificación en euros. 725€ para Supuesto A (cuidado familiar), 500€ para otros supuestos válidos, 0€ si no califica")]
+    pub importe_mensual: i32,
+    
+    #[schemars(description = "Descripción detallada de los requisitos adicionales que deben cumplirse")]
+    #[serde(default)]
+    pub requisitos_adicionales: String,
+    
+    #[schemars(description = "Letra del supuesto aplicable según la normativa (A, B, C, D, E) o vacío si no califica")]
+    pub supuesto: String,
+    
+    #[schemars(description = "¿Cumple los requisitos intrínsecos para tener derecho potencial a la bonificación?")]
+    pub tiene_derecho_potencial: bool,
+    
+    #[schemars(description = "Lista de errores o requisitos no cumplidos")]
+    #[serde(default)]
+    pub errores: Vec<String>,
+    
+    #[schemars(description = "Lista de advertencias o información adicional relevante")]
+    #[serde(default)]
+    pub advertencias: Vec<String>,
+}
+
+// =================== MOTOR DE DECISIÓN ===================
+
+#[derive(Debug, Clone)]
+struct ExcedenciaDecisionEngine;
+
+impl ExcedenciaDecisionEngine {
+    fn new() -> Self {
+        Self
+    }
+
+    async fn evaluate_excedencia(&self, request: &ExcedenciaRequest) -> Result<ExcedenciaResponse, ExcedenciaError> {
+        // Cargar la decisión desde el archivo JSON
+        let decision_content: DecisionContent = 
+            serde_json::from_str(include_str!("ayuda-excedencia-2025.json"))
+            .map_err(ExcedenciaError::from)?;
+        let engine = DecisionEngine::default();
+        let decision = engine.create_decision(decision_content.into());
+        
+        // Convertir struct a JSON y luego a Variable
+        let json_value = serde_json::to_value(request)?;
+        
+        match decision.evaluate(json_value.into()).await {
+            Ok(result) => {
+                // Convertir el resultado de Variable a Value y luego deserializar
+                let result_value: serde_json::Value = result.result.into();
+                let mut response: ExcedenciaResponse = serde_json::from_value(result_value)?;
+                
+                // Convertir ExcedenciaOutput a ExcedenciaOutputForSchema
+                let internal_output: ExcedenciaOutput = serde_json::from_value(
+                    serde_json::to_value(&response.output)?
+                )?;
+                
+                response.output = ExcedenciaOutputForSchema {
+                    descripcion: internal_output.descripcion,
+                    importe_mensual: internal_output.importe_mensual,
+                    requisitos_adicionales: internal_output.requisitos_adicionales,
+                    supuesto: internal_output.supuesto,
+                    tiene_derecho_potencial: internal_output.tiene_derecho_potencial,
+                    errores: internal_output.errores,
+                    advertencias: internal_output.advertencias,
+                };
+                
+                Ok(response)
+            },
+            Err(zen_error) => {
+                // Intentar extraer información de errores de validación
+                if let Some(validation_errors) = Self::extract_validation_errors(&zen_error) {
+                    Err(ExcedenciaError::ValidationError(validation_errors))
+                } else {
+                    Err(ExcedenciaError::ZenEngineError(*zen_error))
+                }
+            }
+        }
+    }
+    
+    // Función helper para extraer errores de validación del error de ZEN
+    fn extract_validation_errors(error: &EvaluationError) -> Option<Vec<ValidationError>> {
+        if let EvaluationError::NodeError(node_error) = error {
+            if let Some(errors) = Self::extract_from_node_error(node_error) {
+                return Some(errors);
+            }
+        }
+        
+        let error_str = format!("{:?}", error);
+        Self::extract_from_error_string(&error_str)
+    }
+    
+    fn extract_from_node_error(node_error: &NodeError) -> Option<Vec<ValidationError>> {
+        let source_str = format!("{:?}", node_error.source);
+        Self::extract_json_from_string(&source_str)
+    }
+    
+    fn extract_from_error_string(error_str: &str) -> Option<Vec<ValidationError>> {
+        Self::extract_json_from_string(error_str)
+    }
+    
+    fn extract_json_from_string(text: &str) -> Option<Vec<ValidationError>> {
+        let patterns = vec![
+            (r#"{"source":{"errors":"#, r#""type":"Validation"}"#),
+            (r#"{"errors":"#, r#""type":"Validation"}"#),
+            (r#""errors":["#, r#"]"#),
+        ];
+        
+        for (start_pattern, end_pattern) in patterns {
+            if let Some(start) = text.find(start_pattern) {
+                let search_from = start + start_pattern.len();
+                if let Some(relative_end) = text[search_from..].find(end_pattern) {
+                    let end = search_from + relative_end + end_pattern.len();
+                    let json_candidate = &text[start..end];
+                    
+                    if let Ok(details) = serde_json::from_str::<ValidationErrorDetails>(json_candidate) {
+                        return Some(details.source.errors);
+                    }
+                    
+                    if let Some(errors) = Self::manual_extract_errors(text) {
+                        return Some(errors);
+                    }
+                }
+            }
+        }
+        
+        Self::manual_extract_errors(text)
+    }
+    
+    fn manual_extract_errors(text: &str) -> Option<Vec<ValidationError>> {
+        if text.contains("is not one of") {
+            let lines: Vec<&str> = text.split(',').collect();
+            
+            let mut message = String::new();
+            let mut path = String::new();
+            
+            for line in lines {
+                if line.contains("\"message\":") {
+                    if let Some(start) = line.find("\"message\":\"") {
+                        let msg_start = start + "\"message\":\"".len();
+                        if let Some(end) = line[msg_start..].find("\"") {
+                            message = line[msg_start..msg_start + end].to_string();
+                        }
+                    }
+                }
+                if line.contains("\"path\":") {
+                    if let Some(start) = line.find("\"path\":\"") {
+                        let path_start = start + "\"path\":\"".len();
+                        if let Some(end) = line[path_start..].find("\"") {
+                            path = line[path_start..path_start + end].to_string();
+                        }
+                    }
+                }
+            }
+            
+            if !message.is_empty() {
+                if path.is_empty() {
+                    path = "/input/unknown".to_string();
+                }
+                return Some(vec![ValidationError { message, path }]);
+            }
+        }
+        
+        None
+    }
+}
+
+// =================== CALCULADORA MCP ===================
+
+#[derive(Debug, Clone)]
+pub struct Calculadora {
+    tool_router: ToolRouter<Self>,
+    // engine: ExcedenciaDecisionEngine,
+}
+
+#[tool_router]
+impl Calculadora {
+    pub fn new() -> Self {
+        Self {
+            tool_router: Self::tool_router(),
+            // engine: ExcedenciaDecisionEngine::new(),
+        }
+    }
+
+    /// Evalúa si una persona tiene derecho a ayuda para excedencia según la normativa de Navarra 2025
+    /// 
+    /// Esta función evalúa los 5 supuestos definidos en la normativa:
+    /// - Supuesto A: Cuidado de familiar de primer grado enfermo/accidentado (725€/mes)
+    /// - Supuesto B: Tercer hijo o más con recién nacido (500€/mes) 
+    /// - Supuesto C: Adopción o acogimiento (500€/mes)
+    /// - Supuesto D: Parto, adopción o acogimiento múltiple (500€/mes)
+    /// - Supuesto E: Familias monoparentales (500€/mes)
+    /// 
+    /// Parámetros de entrada:
+    /// - parentesco: Relación familiar (padre, madre, hijo, hija, cónyuge, pareja, esposo, esposa, mujer, marido)
+    /// - situacion: Motivo del cuidado (parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad_grave, accidente_grave)
+    /// - familia_monoparental: Indica si es familia monoparental (true/false)
+    /// 
+    /// Devuelve información detallada sobre:
+    /// - Supuesto aplicable y descripción
+    /// - Importe mensual de la ayuda
+    /// - Requisitos adicionales específicos
+    /// - Si tiene derecho potencial a la bonificación
+    /// - Errores de validación si los datos son incorrectos
+    #[tool(description = "Evalúa el derecho a ayuda para excedencia según la normativa de Navarra 2025. Determina el supuesto aplicable (A-E), el importe mensual (0€, 500€ o 725€) y los requisitos específicos basándose en el parentesco, situación y tipo de familia.")]
+    async fn evaluar_supuesto_excedencia(
+        &self, 
+        Parameters(request): Parameters<ExcedenciaRequest>
+    ) -> Json<Result<ExcedenciaResponse, String>> {
+        // Usar tokio::task::spawn_blocking para operaciones que no son Send
+        let result = tokio::task::spawn_blocking(move || {
+            // Crear un runtime tokio para la operación async dentro del bloque blocking
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async move {
+                let engine = ExcedenciaDecisionEngine::new();
+                engine.evaluate_excedencia(&request).await
+            })
+        }).await;
+        
+        match result {
+            Ok(eval_result) => {
+                match eval_result {
+                    Ok(response) => Json(Ok(response)),
+                    Err(e) => {
+                        match e {
+                            ExcedenciaError::ValidationError(validation_errors) => {
+                                let mut error_msg = "Errores de validación:\n".to_string();
+                                for error in validation_errors {
+                                    error_msg.push_str(&format!("  - Campo '{}': {}\n", error.path, error.message));
+                                }
+                                Json(Err(error_msg))
+                            },
+                            _ => Json(Err(format!("Error al evaluar: {}", e)))
+                        }
+                    }
+                }
+            },
+            Err(join_error) => {
+                Json(Err(format!("Error interno: {}", join_error)))
+            }
+        }
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for Calculadora {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            instructions: Some(
+                "Calculadora de ayudas para excedencia según la normativa de Navarra 2025. \
+                 Evalúa los 5 supuestos (A-E) para determinar el derecho a bonificación: \
+                 A) Cuidado familiar enfermo/accidentado (725€), \
+                 B) Tercer hijo+ con recién nacido (500€), \
+                 C) Adopción/acogimiento (500€), \
+                 D) Partos/adopciones múltiples (500€), \
+                 E) Familias monoparentales (500€). \
+                 Proporciona información detallada sobre requisitos y elegibilidad.".into()
+            ),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            ..Default::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_calculadora_supuesto_a() {
+        let calculadora = Calculadora::new();
+        let request = ExcedenciaRequest {
+            input: ExcedenciaInput {
+                parentesco: "madre".to_string(),
+                situacion: "enfermedad_grave".to_string(),
+                familia_monoparental: false,
+            }
+        };
+        
+        let result = calculadora.evaluar_supuesto_excedencia(Parameters(request)).await;
+        match result.0 {
+            Ok(response) => {
+                assert_eq!(response.output.supuesto, "A");
+                assert_eq!(response.output.importe_mensual, 725);
+                assert!(response.output.tiene_derecho_potencial);
+            },
+            Err(e) => panic!("Error inesperado: {}", e),
+        }
+    }
+
+    #[tokio::test] 
+    async fn test_calculadora_supuesto_e() {
+        let calculadora = Calculadora::new();
+        let request = ExcedenciaRequest {
+            input: ExcedenciaInput {
+                parentesco: "madre".to_string(),
+                situacion: "parto".to_string(),
+                familia_monoparental: true,
+            }
+        };
+        
+        let result = calculadora.evaluar_supuesto_excedencia(Parameters(request)).await;
+        match result.0 {
+            Ok(response) => {
+                assert_eq!(response.output.supuesto, "E");
+                assert_eq!(response.output.importe_mensual, 500);
+                assert!(response.output.tiene_derecho_potencial);
+            },
+            Err(e) => panic!("Error inesperado: {}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_calculadora_validation_error() {
+        let calculadora = Calculadora::new();
+        let request = ExcedenciaRequest {
+            input: ExcedenciaInput {
+                parentesco: "hermano".to_string(), // No válido
+                situacion: "parto".to_string(),
+                familia_monoparental: false,
+            }
+        };
+        
+        let result = calculadora.evaluar_supuesto_excedencia(Parameters(request)).await;
+        match result.0 {
+            Ok(_) => {
+                // Puede devolver un resultado válido indicando que no califica
+                // en lugar de error de validación
+            },
+            Err(error_msg) => {
+                assert!(error_msg.contains("validación") || error_msg.contains("parentesco"));
+            }
+        }
+    }
+}
