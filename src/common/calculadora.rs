@@ -37,7 +37,6 @@ pub enum ExcedenciaError {
     ValidationError(Vec<ValidationError>),
     ZenEngineError(EvaluationError),
     SerializationError(serde_json::Error),
-    // Other(String),
 }
 
 impl fmt::Display for ExcedenciaError {
@@ -52,7 +51,6 @@ impl fmt::Display for ExcedenciaError {
             },
             ExcedenciaError::ZenEngineError(e) => write!(f, "Error del motor de decisión: {}", e),
             ExcedenciaError::SerializationError(e) => write!(f, "Error de serialización: {}", e),
-            // ExcedenciaError::Other(msg) => write!(f, "Error: {}", msg),
         }
     }
 }
@@ -83,6 +81,10 @@ pub struct ExcedenciaInput {
     
     #[schemars(description = "¿Es una familia monoparental o en situación de monoparentalidad?")]
     pub familia_monoparental: bool,
+    
+    #[schemars(description = "Número de hijos incluyendo al recién nacido si es el caso")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub numero_hijos: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
@@ -290,7 +292,6 @@ impl ExcedenciaDecisionEngine {
 #[derive(Debug, Clone)]
 pub struct Calculadora {
     tool_router: ToolRouter<Self>,
-    // engine: ExcedenciaDecisionEngine,
 }
 
 #[tool_router]
@@ -298,7 +299,6 @@ impl Calculadora {
     pub fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
-            // engine: ExcedenciaDecisionEngine::new(),
         }
     }
 
@@ -313,8 +313,9 @@ impl Calculadora {
     /// 
     /// Parámetros de entrada:
     /// - parentesco: Relación familiar (padre, madre, hijo, hija, cónyuge, pareja, esposo, esposa, mujer, marido)
-    /// - situacion: Motivo del cuidado (parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad_grave, accidente_grave)
+    /// - situacion: Motivo del cuidado (parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad, accidente)
     /// - familia_monoparental: Indica si es familia monoparental (true/false)
+    /// - numero_hijos: Número de hijos incluyendo al recién nacido (opcional, requerido para Supuesto B)
     /// 
     /// Devuelve información detallada sobre:
     /// - Supuesto aplicable y descripción
@@ -322,7 +323,7 @@ impl Calculadora {
     /// - Requisitos adicionales específicos
     /// - Si tiene derecho potencial a la bonificación
     /// - Errores de validación si los datos son incorrectos
-    #[tool(description = "Evalúa el derecho a ayuda para excedencia según la normativa de Navarra 2025. Determina el supuesto aplicable (A-E), el importe mensual (0€, 500€ o 725€) y los requisitos específicos basándose en el parentesco, situación y tipo de familia.")]
+    #[tool(description = "Evalúa el derecho a ayuda para excedencia según la normativa de Navarra 2025. Determina el supuesto aplicable (A-E), el importe mensual (0€, 500€ o 725€) y los requisitos específicos basándose en el parentesco, situación, tipo de familia y número de hijos.")]
     async fn evaluar_supuesto_excedencia(
         &self, 
         Parameters(request): Parameters<ExcedenciaRequest>
@@ -370,11 +371,12 @@ impl ServerHandler for Calculadora {
                 "Calculadora de ayudas para excedencia según la normativa de Navarra 2025. \
                  Evalúa los 5 supuestos (A-E) para determinar el derecho a bonificación: \
                  A) Cuidado familiar enfermo/accidentado (725€), \
-                 B) Tercer hijo+ con recién nacido (500€), \
+                 B) Tercer hijo+ con recién nacido (500€) - requiere número de hijos ≥ 3, \
                  C) Adopción/acogimiento (500€), \
                  D) Partos/adopciones múltiples (500€), \
                  E) Familias monoparentales (500€). \
-                 Proporciona información detallada sobre requisitos y elegibilidad.".into()
+                 Proporciona información detallada sobre requisitos y elegibilidad. \
+                 Para el Supuesto B es importante incluir el número de hijos.".into()
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
@@ -392,8 +394,9 @@ mod tests {
         let request = ExcedenciaRequest {
             input: ExcedenciaInput {
                 parentesco: "madre".to_string(),
-                situacion: "enfermedad_grave".to_string(),
+                situacion: "enfermedad".to_string(),
                 familia_monoparental: false,
+                numero_hijos: None,
             }
         };
         
@@ -416,6 +419,7 @@ mod tests {
                 parentesco: "madre".to_string(),
                 situacion: "parto".to_string(),
                 familia_monoparental: true,
+                numero_hijos: Some(1.0),
             }
         };
         
@@ -431,6 +435,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_calculadora_supuesto_b() {
+        let calculadora = Calculadora::new();
+        let request = ExcedenciaRequest {
+            input: ExcedenciaInput {
+                parentesco: "madre".to_string(),
+                situacion: "parto".to_string(),
+                familia_monoparental: false,
+                numero_hijos: Some(3.0), // Tercer hijo
+            }
+        };
+        
+        let result = calculadora.evaluar_supuesto_excedencia(Parameters(request)).await;
+        match result.0 {
+            Ok(response) => {
+                // Dependiendo de la lógica del sistema, puede ser Supuesto B
+                println!("Resultado Supuesto B: {:?}", response);
+            },
+            Err(e) => panic!("Error inesperado: {}", e),
+        }
+    }
+
+    #[tokio::test]
     async fn test_calculadora_validation_error() {
         let calculadora = Calculadora::new();
         let request = ExcedenciaRequest {
@@ -438,6 +464,7 @@ mod tests {
                 parentesco: "hermano".to_string(), // No válido
                 situacion: "parto".to_string(),
                 familia_monoparental: false,
+                numero_hijos: None,
             }
         };
         

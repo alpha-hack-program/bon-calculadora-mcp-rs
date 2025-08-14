@@ -7,7 +7,7 @@ use tracing_subscriber::{
 mod common;
 use common::calculadora::Calculadora;
 
-const BIND_ADDRESS: &str = "127.0.0.1:8001";
+const BIND_ADDRESS: &str = "127.0.0.1:8000";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -19,10 +19,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting sse Calculator MCP server on {}", BIND_ADDRESS);
-
+    // Use environment variable or the static value
+    let bind_address = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| BIND_ADDRESS.to_string());
+    tracing::info!("Starting sse Calculator MCP server on {}", bind_address);
     let config = SseServerConfig {
-        bind: BIND_ADDRESS.parse()?,
+        bind: bind_address.parse()?,
         sse_path: "/sse".to_string(),
         post_path: "/message".to_string(),
         ct: tokio_util::sync::CancellationToken::new(),

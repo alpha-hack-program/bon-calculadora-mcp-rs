@@ -21,8 +21,9 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    tracing::info!("Starting streamable-http Calculator MCP server on {}", BIND_ADDRESS);
-
+    // Use environment variable or the static value
+    let bind_address = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| BIND_ADDRESS.to_string());
+    tracing::info!("Starting streamable-http Calculator MCP server on {}", bind_address);
     let service = StreamableHttpService::new(
         || Ok(Calculadora::new()),
         LocalSessionManager::default().into(),
@@ -30,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let router = axum::Router::new().nest_service("/mcp", service);
-    let tcp_listener = tokio::net::TcpListener::bind(BIND_ADDRESS).await?;
+    let tcp_listener = tokio::net::TcpListener::bind(bind_address).await?;
     let _ = axum::serve(tcp_listener, router)
         .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() })
         .await;
