@@ -65,7 +65,3 @@ path = "src/sse_server.rs"
 [[bin]]
 name = "mcp_server"
 path = "src/mcp_server.rs"
-
-[[bin]]
-name = "zen_test"
-path = "src/zen_test.rs"

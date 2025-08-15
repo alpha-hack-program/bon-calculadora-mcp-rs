@@ -18,34 +18,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
           
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Test make build
+      - name: Run unit tests
         run: |
-          echo "🏗️ Testing make build..."
-          make build
+          echo "🔌 Testing unit tests..."
+          make test
+          echo "✅ Unit tests successful"
           
-          # Verify build output exists
-          if [ ! -f build/index.js ]; then
-            echo "❌ build/index.js not found"
-            exit 1
-          fi
-          echo "✅ make build successful"
-          
-      - name: Test make test-stdio
+      - name: Run build all servers
         run: |
-          echo "🔌 Testing make test-stdio..."
-          make test-stdio
-          echo "✅ make test-stdio successful"
-          
+          echo "🔌 Building all servers..."
+          make build-all
+          echo "✅ All servers built successfully"
+
       - name: Test make pack and verify contents
         run: |
           echo "📦 Testing make pack..."
@@ -79,35 +64,14 @@ jobs:
           # Verify required files exist
           echo "🔍 Verifying package contents..."
           
-          if [ ! -d test-extract/build ]; then
-            echo "❌ build/ directory missing"
+          if [ ! -d test-extract/stdio_server ]; then
+            echo "❌ stdio_server missing"
             ls -la test-extract/
             exit 1
           fi
-          echo "✅ build/ directory found"
+          echo "✅ stdio_server found"
           
-          if [ ! -d test-extract/node_modules ]; then
-            echo "❌ node_modules/ directory missing"
-            ls -la test-extract/
-            exit 1
-          fi
-          echo "✅ node_modules/ directory found"
-          
-          if [ ! -f test-extract/package.json ]; then
-            echo "❌ package.json missing"
-            ls -la test-extract/
-            exit 1
-          fi
-          echo "✅ package.json found"
-          
-          if [ ! -f test-extract/package-lock.json ]; then
-            echo "❌ package-lock.json missing"
-            ls -la test-extract/
-            exit 1
-          fi
-          echo "✅ package-lock.json found"
-          
-          if [ ! -f test-extract/manifest.json ]; then
+          if [ ! -d test-extract/manifest.json ]; then
             echo "❌ manifest.json missing"
             ls -la test-extract/
             exit 1
@@ -202,5 +166,7 @@ jobs:
           name: build-artifacts
           path: |
             *.dxt
-            build/
+            target/release/stdio_server
+            target/release/sse_server
+            target/release/mcp_server
           retention-days: 7
