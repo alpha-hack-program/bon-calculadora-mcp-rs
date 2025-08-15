@@ -4,21 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = [
-    "server",
-    "transport-sse-server",
-    "transport-io",
-    "transport-streamable-http-server",
-    "auth",
-] }
-
-# rmcp = { version = "0.3.0", features = [
+# rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "05e9a04", features = [
 #     "server",
 #     "transport-sse-server",
 #     "transport-io",
 #     "transport-streamable-http-server",
 #     "auth",
 # ] }
+
+rmcp = { version = "0.5.0", features = [
+    "server",
+    "transport-sse-server",
+    "transport-io",
+    "transport-streamable-http-server",
+    "auth",
+] }
 tokio = { version = "1.46", features = [
     "macros",
     "rt",

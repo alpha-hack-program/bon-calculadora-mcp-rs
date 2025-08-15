@@ -26,18 +26,12 @@ pack: build-stdio
 # Test SSE server locally
 test-sse: build-sse
 	@echo "🧪 Testing SSE server..."
-	@echo "🚀 Starting HTTP server on port 8001..."
-	@echo "📋 Test endpoints:"
-	@echo "   curl http://localhost:8001/sse"
 	@echo ""
 	RUST_LOG=debug ./target/release/sse_server
 
 # Test MCP server locally
 test-mcp: build-mcp
 	@echo "🧪 Testing MCP server..."
-	@echo "🚀 Starting HTTP server on port 8001..."
-	@echo "📋 Test endpoints:"
-	@echo "   curl http://localhost:8001/mcp"
 	@echo ""
 	RUST_LOG=debug ./target/release/mcp_server
 	
