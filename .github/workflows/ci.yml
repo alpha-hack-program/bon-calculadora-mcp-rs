@@ -64,14 +64,14 @@ jobs:
           # Verify required files exist
           echo "🔍 Verifying package contents..."
           
-          if [ ! -d test-extract/stdio_server ]; then
+          if [ ! -f test-extract/stdio_server ]; then
             echo "❌ stdio_server missing"
             ls -la test-extract/
             exit 1
           fi
           echo "✅ stdio_server found"
           
-          if [ ! -d test-extract/manifest.json ]; then
+          if [ ! -f test-extract/manifest.json ]; then
             echo "❌ manifest.json missing"
             ls -la test-extract/
             exit 1
