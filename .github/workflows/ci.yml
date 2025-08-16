@@ -90,9 +90,7 @@ jobs:
           # Make script executable
           chmod +x image.sh
 
-          # Copy .env.sample to .env
-          cp .env.sample .env
-          echo "🐳 Using .env.sample as .env for build test"
+          echo "🐳 Using .env for build test"
           
           # Check what container runtime is available (podman takes precedence)
           echo "🔍 Checking available container runtimes..."
