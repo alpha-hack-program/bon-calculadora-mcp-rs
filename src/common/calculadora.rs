@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer, de::Error as DeError};
 use zen_engine::DecisionEngine;
 use zen_engine::model::DecisionContent;
 use zen_engine::{EvaluationError, NodeError};
@@ -70,6 +70,126 @@ impl From<serde_json::Error> for ExcedenciaError {
     }
 }
 
+// =================== FUNCIONES AUXILIARES ===================
+
+/// Deserializa un valor que puede ser bool o string ("true"/"false")
+fn deserialize_bool_or_string<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Visitor;
+    use std::fmt;
+
+    struct BoolOrStringVisitor;
+
+    impl<'de> Visitor<'de> for BoolOrStringVisitor {
+        type Value = bool;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("bool or string")
+        }
+
+        fn visit_bool<E>(self, value: bool) -> Result<bool, E>
+        where
+            E: DeError,
+        {
+            Ok(value)
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<bool, E>
+        where
+            E: DeError,
+        {
+            match value.to_lowercase().as_str() {
+                "true" => Ok(true),
+                "false" => Ok(false),
+                _ => Err(DeError::custom(format!("invalid boolean string: {}", value))),
+            }
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<bool, E>
+        where
+            E: DeError,
+        {
+            self.visit_str(&value)
+        }
+    }
+
+    deserializer.deserialize_any(BoolOrStringVisitor)
+}
+
+/// Deserializa un valor que puede ser f64 o string numérico
+fn deserialize_f64_or_string<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Visitor;
+    use std::fmt;
+
+    struct F64OrStringVisitor;
+
+    impl<'de> Visitor<'de> for F64OrStringVisitor {
+        type Value = Option<f64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("f64, string, or null")
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            Ok(Some(value))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            Ok(Some(value as f64))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            Ok(Some(value as f64))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            value.parse::<f64>()
+                .map(Some)
+                .map_err(|_| DeError::custom(format!("invalid number string: {}", value)))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            self.visit_str(&value)
+        }
+
+        fn visit_none<E>(self) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Option<f64>, E>
+        where
+            E: DeError,
+        {
+            Ok(None)
+        }
+    }
+
+    deserializer.deserialize_any(F64OrStringVisitor)
+}
+
 // =================== ESTRUCTURAS DE DATOS ===================
 
 // Direct parameters structure for MCP (flattened)
@@ -81,28 +201,32 @@ pub struct ExcedenciaDirectParams {
     #[schemars(description = "Situación que motiva la necesidad de cuidado. VALORES VÁLIDOS: 'parto', 'adopcion', 'acogimiento', 'parto_multiple', 'adopcion_multiple', 'acogimiento_multiple', 'enfermedad', 'accidente'. Ejemplo: 'parto'")]
     pub situacion: String,
     
-    #[schemars(description = "¿Es una familia monoparental? Use exactamente: true (para familias monoparentales) o false (para familias con ambos padres). Ejemplo: true")]
+    #[schemars(description = "¿Es una familia monoparental? Acepta valores booleanos (true/false) o strings ('true'/'false'). Use exactamente: true (para familias monoparentales) o false (para familias con ambos padres). Ejemplo: true")]
+    #[serde(deserialize_with = "deserialize_bool_or_string")]
     pub familia_monoparental: bool,
     
-    #[schemars(description = "Número total de hijos incluyendo al recién nacido (requerido para Supuesto B - tercer hijo o más). Use números enteros. Ejemplo: 3")]
+    #[schemars(description = "Número total de hijos incluyendo al recién nacido (requerido para Supuesto B - tercer hijo o más). Acepta números (3) o strings ('3'). Use números enteros. Ejemplo: 3")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "deserialize_f64_or_string")]
     pub numero_hijos: Option<f64>,
 }
 
 // Internal structure for the ZEN engine (nested)
 #[derive(Debug, Serialize, Deserialize, PartialEq, schemars::JsonSchema)]
 pub struct ExcedenciaInput {
-    #[schemars(description = "Relación familiar con la persona que necesita cuidado. Valores válidos: padre, madre, hijo, hija, conyuge, pareja, esposo, esposa, mujer, marido")]
+    #[schemars(description = "Es un string que indica relación familiar con la persona que necesita cuidado. Valores válidos: padre, madre, hijo, hija, conyuge, pareja, esposo, esposa, mujer, marido")]
     pub parentesco: String,
     
-    #[schemars(description = "Situación que motiva la necesidad de cuidado. Valores válidos: parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad, accidente")]
+    #[schemars(description = "Es un string que indica la situación que motiva la necesidad de cuidado. Valores válidos: parto, adopcion, acogimiento, parto_multiple, adopcion_multiple, acogimiento_multiple, enfermedad, accidente")]
     pub situacion: String,
     
-    #[schemars(description = "¿Es una familia monoparental o en situación de monoparentalidad?")]
+    #[schemars(description = "Es un booleano para indicar si la familia es monoparental. Acepta valores booleanos (true/false) o strings ('true'/'false'). Valores válidos: true, false, 'true', 'false'")]
+    #[serde(deserialize_with = "deserialize_bool_or_string")]
     pub familia_monoparental: bool,
     
-    #[schemars(description = "Número de hijos incluyendo al recién nacido si es el caso")]
+    #[schemars(description = "Es un número que indica el número de hijos incluyendo al recién nacido si es el caso. Acepta números (4) o strings ('4'). Se expresa sin comillas. Valores válidos: número")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "deserialize_f64_or_string")]
     pub numero_hijos: Option<f64>,
 }
 
